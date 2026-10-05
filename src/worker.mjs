@@ -1,7 +1,9 @@
 import {run} from './engine.mjs';
+import {publicPage} from './pages.mjs';
 export default {
   async fetch(request,env) {
     const url=new URL(request.url);
+    if (request.method==='GET') {const page=publicPage(url.pathname);if (page) return page;}
     if (url.pathname==='/health' && request.method==='GET')
       return Response.json({service:'inbox-cleaner',mode:env.MODE ?? 'preview',ready:!!(env.DB && env.GMAIL_ACCOUNTS_JSON && env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET)},{headers:{'Cache-Control':'no-store'}});
     if (!env.ADMIN_TOKEN || request.headers.get('Authorization') !== `Bearer ${env.ADMIN_TOKEN}`)
