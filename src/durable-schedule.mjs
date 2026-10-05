@@ -3,7 +3,7 @@ import {SchedulerState} from './scheduler-state.mjs';
 
 export async function durableSchedule(env,event,step,{process=run,ticks=30}={}){
   const state=new SchedulerState(env.DB),owner=event.instanceId;
-  const options={retries:{limit:0},timeout:'1 minute'};
+  const options={retries:{limit:0,delay:'5 seconds',backoff:'constant'},timeout:'1 minute'};
   const claimed=await step.do('claim scheduler',options,()=>state.claim(owner));
   if(!claimed)return {status:'already running'};
   for(let tick=0;tick<ticks;tick++){
