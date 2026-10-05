@@ -1,7 +1,7 @@
 # Inbox Cleaner
 
 An unattended cleaner for two Gmail accounts, hosted on Cloudflare Workers Free with Workers AI.
-The initial deployment is **preview only**. Local tests and previews never delete, archive, label, or mark mail read.
+Scheduled runs apply the owner's approved **permanent deletion** policy. Snapshot previews and tests never change Gmail.
 
 ## Behavior
 
@@ -68,7 +68,8 @@ secret in the `personal-cloudflare` GitHub environment. Do not use Circleback cr
 The deploy helper verifies the token identifies `arguiot@gmail.com` before any Cloudflare mutation.
 First pin the verified personal account ID and Free-plan status in `cloudflare-target.json`. An unverified target refuses deployment.
 
-Set Worker secrets using Wrangler: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GMAIL_ACCOUNTS_JSON`, and `ADMIN_TOKEN`.
+Set Worker secrets using Wrangler: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GMAIL_ACCOUNTS_JSON`.
+`ADMIN_TOKEN` is optional and is not installed; the public run endpoint is therefore inaccessible.
 Secrets are installed directly into Cloudflare; Gmail tokens are not passed through GitHub CI.
 
 Enable the repository variable `CLOUDFLARE_DEPLOY_ENABLED=true` after personal account verification.
@@ -76,7 +77,8 @@ Pushes to `main` then run checks/tests, apply D1 migrations, and deploy. Pull re
 The CI/CD token cannot silently select an account from the machine's global Wrangler session.
 
 `GET /health` exposes only mode/readiness. `POST /run` requires `Authorization: Bearer <ADMIN_TOKEN>` and always previews.
-Preview reports are counts only. To enable scheduled permanent deletion, change `MODE` to `delete` in `wrangler.jsonc`
+Execution logs contain counts, fixed provider status messages, and source locations; no email bodies or subjects are logged.
+To disable scheduled permanent deletion, change `MODE` to `preview` in `wrangler.jsonc`. To enable it, use `delete`
 after the actual classifier preview is reviewed and validation is complete. Each deploy retains the checked-in mode.
 
 ## Status
