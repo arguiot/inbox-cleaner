@@ -12,8 +12,8 @@ export class Gmail {
     return response.json();
   }
   profile() { return this.request('profile'); }
-  list(pageToken) {
-    const query = new URLSearchParams({q:'in:inbox {newer_than:30d is:unread}', maxResults:'100'});
+  list(pageToken, {unreadOnly = false} = {}) {
+    const query = new URLSearchParams({q:unreadOnly?'in:inbox is:unread':'in:inbox {newer_than:30d is:unread}', maxResults:'100'});
     if (pageToken) query.set('pageToken', pageToken);
     return this.request(`messages?${query}`);
   }

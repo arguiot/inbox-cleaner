@@ -3,6 +3,17 @@ import {classify} from './classifier.mjs';
 import {Gmail, accessToken} from './gmail.mjs';
 import {Store} from './store.mjs';
 
+async function pendingPage(gmail,store,account,stream,execute) {
+  const page=await store.cursor(account,stream);
+  const options={unreadOnly:stream==='unread'};
+  let listed;
+  try {listed=await gmail.list(page,options);}
+  catch(error) {if(!page)throw error;listed=await gmail.list(undefined,options);}
+  const ids=(listed.messages ?? []).map(m=>m.id),seen=await store.seen(account,ids);
+  const candidates=ids.filter(id=>!seen.has(id)||(execute&&seen.get(id).status==='preview'&&seen.get(id).action==='delete'));
+  return {listed,candidates};
+}
+
 export async function mayDelete(message, gmail, now = Date.now()) {
   if (protectedMessage(message) || !message.labelIds?.includes('INBOX')) return false;
   const thread = await gmail.thread(message.threadId);
@@ -49,12 +60,13 @@ export async function run(env, {execute = false, fetcher = fetch, now = Date.now
       const token=await accessToken(account,env,fetcher), gmail=new Gmail(token,fetcher);
       const profile=await gmail.profile();
       if (profile.emailAddress.toLowerCase() !== account.email.toLowerCase()) throw new Error('Gmail account identity mismatch');
-      const page=await store.cursor(account.email);
-      let listed;
-      try { listed=await gmail.list(page); }
-      catch(error) { if (!page) throw error; listed=await gmail.list(); }
-      const ids=(listed.messages ?? []).map(m=>m.id), seen=await store.seen(account.email,ids);
-      const candidates=ids.filter(id => !seen.has(id) || (execute && seen.get(id).status==='preview' && seen.get(id).action==='delete'));
+      let stream='unread';
+      let {listed,candidates}=await pendingPage(gmail,store,account.email,stream,execute);
+      if (!candidates.length && !listed.nextPageToken) {
+        await store.setCursor(account.email,undefined,stream);
+        stream='recent';
+        ({listed,candidates}=await pendingPage(gmail,store,account.email,stream,execute));
+      }
       const summary={account:account.email,scanned:0,flagged:0,deleted:0,kept:0,deferred:0};
       report.accounts.push(summary);
       for (const id of candidates.slice(0,batchLimit)) {
@@ -80,7 +92,7 @@ export async function run(env, {execute = false, fetcher = fetch, now = Date.now
         if (result.deleted) summary.deleted++;
       }
       // Stay on this page until every candidate has been processed; then paginate the backlog.
-      if (candidates.length<=summary.scanned && !summary.deferred) await store.setCursor(account.email,listed.nextPageToken);
+      if (candidates.length<=summary.scanned && !summary.deferred) await store.setCursor(account.email,listed.nextPageToken,stream);
     }
     return report;
   } finally { await store.release(owner); }

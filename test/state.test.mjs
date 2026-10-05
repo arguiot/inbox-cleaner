@@ -42,6 +42,9 @@ test('message cache and pagination stay isolated between Gmail accounts',async()
   await store.setCursor('personal','page2');
   assert.equal(await store.cursor('personal'),'page2');
   assert.equal(await store.cursor('work'),undefined);
+  await store.setCursor('personal','unread-page2','unread');
+  assert.equal(await store.cursor('personal','unread'),'unread-page2');
+  assert.equal(await store.cursor('personal'),'page2');
 });
 test('a full Gmail page fits D1 parameter limits without dropping cached IDs',async()=>{
   const store=new Store(database()), ids=Array.from({length:100},(_,i)=>`mail-${i}`);
@@ -80,4 +83,23 @@ test('scheduled run rejects a token for the wrong Gmail account before reading m
   };
   const env={DB:db,GMAIL_ACCOUNTS_JSON:JSON.stringify([{email:'arguiot@gmail.com',refreshToken:'refresh'}]),GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret'};
   await assert.rejects(run(env,{fetcher}),/identity mismatch/);assert.equal(reads,0);
+});
+
+test('older unread mail is processed before newer read mail, then recent mail resumes',async()=>{
+  const db=database(),reads=[];
+  const fetcher=async url=>{
+    if(url.endsWith('/token'))return Response.json({access_token:'token'});
+    if(url.endsWith('/profile'))return Response.json({emailAddress:'arguiot@gmail.com'});
+    if(url.includes('/messages?')){
+      const unread=new URL(url).searchParams.get('q')==='in:inbox is:unread';
+      return Response.json({messages:[{id:unread?'older-unread':'newer-read'}]});
+    }
+    const id=url.includes('older-unread')?'older-unread':'newer-read';reads.push(id);
+    return Response.json({id,threadId:'t',labelIds:['INBOX'],payload:{headers:[]},snippet:'Keep'});
+  };
+  const env={DB:db,GMAIL_ACCOUNTS_JSON:JSON.stringify([{email:'arguiot@gmail.com',refreshToken:'refresh'}]),
+    GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret',MODE:'preview',AI_MODEL:CLEF_MODEL,
+    AI:{run:async()=>({answers:{relevance:{type:'choice',choice:'wanted',probabilities:{wanted:0.95,unwanted:0.05}}}})}};
+  await run(env,{fetcher});assert.deepEqual(reads,['older-unread']);
+  await run(env,{fetcher});assert.deepEqual(reads,['older-unread','newer-read']);
 });

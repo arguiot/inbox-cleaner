@@ -12,10 +12,12 @@ export class Store {
       ON CONFLICT(day) DO UPDATE SET used=used+1 WHERE used < ?`).bind(day,limit).run();
     return result.meta.changes === 1;
   }
-  async cursor(account) {
+  async cursor(account, stream = 'recent') {
+    if (stream==='unread') account+=':unread';
     return (await this.db.prepare('SELECT page FROM cursors WHERE account=?').bind(account).first())?.page;
   }
-  setCursor(account, page) {
+  setCursor(account, page, stream = 'recent') {
+    if (stream==='unread') account+=':unread';
     return this.db.prepare('INSERT INTO cursors(account,page) VALUES (?,?) ON CONFLICT(account) DO UPDATE SET page=excluded.page')
       .bind(account,page ?? null).run();
   }

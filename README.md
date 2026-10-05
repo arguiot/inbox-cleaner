@@ -16,7 +16,7 @@ Clef must choose unwanted with a score of at least 0.80. This score is a decisio
 **not a measured probability of correctness**. There is no target percentage or forced deletion quota.
 The October 5 local preview flagged 93 of 107 snapshot emails (87%); this is not a measured accuracy rate.
 
-The worker runs every minute in small batches. It checks inbox mail from the past 30 days plus all unread inbox mail.
+The worker runs every minute in small batches. It prioritizes unread inbox mail, then checks read inbox mail from the past 30 days.
 Messages outside this scope are not cleaned. State stores IDs, category, and status; it does not store bodies or subjects.
 Already processed mail is skipped. The shared daily AI cap is 500 attempts across both accounts; failures retain mail.
 Hosting must stay on the Free plan. No paid AI fallback exists. Provider quotas can postpone processing.
