@@ -13,7 +13,25 @@ const result=await api(`/accounts/${account}/d1/database/${db}/query`,{method:'P
   "SELECT value FROM settings WHERE key='mode'; SELECT owner,expires FROM scheduler WHERE id=1;"})});
 if(result[0].results[0]?.value!=='delete'){console.log('Scheduled deletion is disabled.');process.exit(0);}
 const active=result[1].results[0];
-if(active?.expires>Date.now()){console.log('Durable scheduler is healthy; no new instance needed.');process.exit(0);}
+if(active){
+  const instance=await api(`/accounts/${account}/workflows/inbox-cleaner-scheduler/instances/${encodeURIComponent(active.owner)}`);
+  if(instance.status==='paused'){console.log('Durable scheduler is paused; no new instance started.');process.exit(0);}
+  if(active.expires>Date.now()&&['running','waiting','queued'].includes(instance.status)){
+    console.log('Durable scheduler is healthy; no new instance needed.');process.exit(0);
+  }
+  if(['errored','terminated','complete'].includes(instance.status))
+    await api(`/accounts/${account}/d1/database/${db}/query`,{method:'POST',body:JSON.stringify({sql:'DELETE FROM scheduler WHERE id=1 AND owner=?',params:[active.owner]})});
+}
 const id=`recovery-${crypto.randomUUID()}`;
 await api(`/accounts/${account}/workflows/inbox-cleaner-scheduler/instances`,{method:'POST',body:JSON.stringify({instance_id:id})});
-console.log(`Started personal Cloudflare durable scheduler: ${id}`);
+for(let attempt=0;attempt<10;attempt++){
+  await new Promise(resolve=>setTimeout(resolve,2000));
+  const instance=await api(`/accounts/${account}/workflows/inbox-cleaner-scheduler/instances/${id}`);
+  if(['errored','terminated','complete'].includes(instance.status))throw Error(`Durable scheduler startup ${instance.status}`);
+  const state=await api(`/accounts/${account}/d1/database/${db}/query`,{method:'POST',body:JSON.stringify({sql:'SELECT owner,expires FROM scheduler WHERE id=1'})});
+  const lease=state[0].results[0];
+  if(lease?.owner===id&&lease.expires>Date.now()){
+    console.log(`Verified personal Cloudflare durable scheduler: ${id}`);process.exit(0);
+  }
+}
+throw Error('Durable scheduler did not establish a heartbeat');
