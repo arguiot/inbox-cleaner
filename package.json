@@ -1,0 +1,16 @@
+{
+  "name": "inbox-cleaner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "dev": "wrangler dev",
+    "preview": "node scripts/preview.mjs",
+    "deploy": "node scripts/deploy.mjs",
+    "auth:gmail": "node scripts/google-auth.mjs"
+  },
+  "devDependencies": {"wrangler": "4.147.0"}
+}

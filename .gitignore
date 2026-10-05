@@ -1,0 +1,12 @@
+node_modules/
+.wrangler/
+.wrangler-deploy.json
+.dev.vars*
+.env*
+!.env.example
+private/
+reports/
+credentials*.json
+tokens*.json
+*.log
+.DS_Store

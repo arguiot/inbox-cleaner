@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "inbox-cleaner",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-10-05",
+  "workers_dev": true,
+  "vars": {
+    "MODE": "preview",
+    "AI_MODEL": "@cf/meta/llama-3.1-8b-instruct-fp8-fast",
+    "MAX_MESSAGES_PER_ACCOUNT": "3",
+    "MAX_AI_MESSAGES_PER_DAY": "500",
+    "EXPECTED_CLOUDFLARE_EMAIL": "arguiot@gmail.com"
+  },
+  "ai": {"binding": "AI", "remote": true},
+  "triggers": {"crons": ["* * * * *"]},
+  "observability": {"enabled": false}
+}
