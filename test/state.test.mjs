@@ -4,12 +4,14 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {Store} from '../src/store.mjs';
 import {run} from '../src/engine.mjs';
+import {CLEF_MODEL} from '../src/classifier.mjs';
 
 function database() {
   const sqlite=new DatabaseSync(':memory:');
   sqlite.exec(readFileSync(new URL('../migrations/0001_state.sql',import.meta.url),'utf8'));
   return {prepare(sql){
     return {bind(...args){
+      assert.ok(args.length<=100,'D1 bound parameter limit');
       const statement=sqlite.prepare(sql);
       return {async run(){return {meta:{changes:Number(statement.run(...args).changes)}};},
         async first(){return statement.get(...args)??null;}, async all(){return {results:statement.all(...args)};}};
@@ -41,6 +43,13 @@ test('message cache and pagination stay isolated between Gmail accounts',async()
   assert.equal(await store.cursor('personal'),'page2');
   assert.equal(await store.cursor('work'),undefined);
 });
+test('a full Gmail page fits D1 parameter limits without dropping cached IDs',async()=>{
+  const store=new Store(database()), ids=Array.from({length:100},(_,i)=>`mail-${i}`);
+  for (const id of ids) await store.record('personal',id,{action:'keep',category:'important'},'preview',100);
+  assert.equal((await store.seen('personal',ids)).size,100);
+  assert.equal((await store.seen('work',ids)).size,0);
+  assert.equal((await store.seen('personal',[])).size,0);
+});
 test('entire scheduled preview runs through OAuth, account verification, Gmail reads, AI, and SQLite without writes',async()=>{
   const db=database(), writes=[];
   const mail={id:'a',threadId:'t',labelIds:['INBOX'],payload:{headers:[]},snippet:'Sale'};
@@ -53,8 +62,9 @@ test('entire scheduled preview runs through OAuth, account verification, Gmail r
     writes.push({url,options});throw new Error('Unexpected Gmail write');
   };
   const env={DB:db,GMAIL_ACCOUNTS_JSON:JSON.stringify([{email:'arguiot@gmail.com',refreshToken:'refresh'}]),
-    GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret',MODE:'preview',AI_MODEL:'test',
-    AI:{run:async()=>{inferenceCalls++;return {response:JSON.stringify({action:'delete',category:'marketing',confidence:0.99,reason:'Ad'})};}}};
+    GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret',MODE:'preview',AI_MODEL:CLEF_MODEL,
+    AI:{run:async(model,input)=>{inferenceCalls++;assert.equal(model,CLEF_MODEL);assert.equal(input.model,'clef-flash');
+      return {answers:{relevance:{type:'choice',choice:'unwanted',probabilities:{unwanted:0.95,wanted:0.05}}}};}}};
   const report=await run(env,{fetcher});
   assert.equal(report.accounts[0].flagged,1);assert.equal(report.accounts[0].deleted,0);assert.equal(writes.length,0);
   assert.equal(inferenceCalls,1);

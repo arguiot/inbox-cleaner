@@ -20,10 +20,15 @@ export class Store {
       .bind(account,page ?? null).run();
   }
   async seen(account, ids) {
-    if (!ids.length) return new Map();
-    const result = await this.db.prepare(`SELECT id,action,status FROM messages WHERE account=? AND id IN (${ids.map(()=>'?').join(',')})`)
-      .bind(account,...ids).all();
-    return new Map(result.results.map(x => [x.id,x]));
+    const seen=new Map();
+    // D1 allows 100 bound parameters, including the account parameter.
+    for (let offset=0;offset<ids.length;offset+=99) {
+      const batch=ids.slice(offset,offset+99);
+      const result=await this.db.prepare(`SELECT id,action,status FROM messages WHERE account=? AND id IN (${batch.map(()=>'?').join(',')})`)
+        .bind(account,...batch).all();
+      for (const row of result.results) seen.set(row.id,row);
+    }
+    return seen;
   }
   record(account,id,decision,status,now) {
     return this.db.prepare(`INSERT INTO messages(account,id,action,category,status,updated) VALUES (?,?,?,?,?,?)
