@@ -8,6 +8,12 @@ import worker from '../src/worker.mjs';
 const disposable=()=>JSON.stringify({action:'delete',category:'marketing',confidence:0.99,reason:'Promotion'});
 const message=(overrides={})=>({id:'a1',threadId:'t1',labelIds:['INBOX'],snippet:'Big sale',
   payload:{headers:[{name:'From',value:'shop@example.test'},{name:'Subject',value:'Sale'}]},...overrides});
+test('Cloudflare parsed JSON and chat completion envelopes retain validated decisions',()=>{
+  const decision=JSON.parse(disposable());
+  assert.deepEqual(parseDecision({response:decision}),decision);
+  assert.deepEqual(parseDecision({choices:[{message:{content:disposable()}}]}),decision);
+  assert.equal(parseDecision({response:{action:'delete'}}).action,'keep');
+});
 test('malformed and ambiguous model output never enables deletion',()=>{
   for (const bad of ['delete','{}',JSON.stringify({action:'delete',category:'important',confidence:1,reason:'test'}),
     JSON.stringify({action:'delete',category:'marketing',confidence:0.97,reason:'test'}),

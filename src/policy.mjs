@@ -51,9 +51,9 @@ export function bodyText(payload) {
 }
 export function parseDecision(response) {
   try {
-    const raw = typeof response === 'string' ? response : response?.response;
-    const text = raw.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
-    const value = JSON.parse(text);
+    const raw = typeof response === 'string' ? response : response?.response ?? response?.choices?.[0]?.message?.content;
+    const value = typeof raw === 'string'
+      ? JSON.parse(raw.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')) : raw;
     if (!['keep','delete'].includes(value.action) || typeof value.confidence !== 'number' ||
         !Number.isFinite(value.confidence) || value.confidence < 0 || value.confidence > 1 ||
         typeof value.reason !== 'string' || value.reason.length > 600 ||

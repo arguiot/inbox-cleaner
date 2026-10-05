@@ -1,4 +1,5 @@
-import {classify, protectedMessage, normalize} from './policy.mjs';
+import {protectedMessage, normalize} from './policy.mjs';
+import {classify} from './classifier.mjs';
 import {Gmail, accessToken} from './gmail.mjs';
 import {Store} from './store.mjs';
 
@@ -9,10 +10,10 @@ export async function mayDelete(message, gmail, now = Date.now()) {
     Number(m.internalDate) > now - 14*86400000);
 }
 
-export async function processMessages({messages, gmail, infer, execute = false, onDecision = async()=>{}}) {
+export async function processMessages({messages, gmail, infer, model, execute = false, onDecision = async()=>{}}) {
   const decisions=[];
   for (const message of messages) {
-    const decision = await classify(message,infer);
+    const decision = await classify(message,infer,{model});
     let deleted=false;
     if (execute && decision.action === 'delete') {
       const fresh = await gmail.get(message.id);
@@ -69,7 +70,7 @@ export async function run(env, {execute = false, fetcher = fetch, now = Date.now
             })]);
           } finally {clearTimeout(timeout);}
         };
-        const result=(await processMessages({messages:[message],gmail,infer,execute,
+        const result=(await processMessages({messages:[message],gmail,infer,model:env.AI_MODEL,execute,
           onDecision:async (m,d,deleted)=> {
             if (!d.retry) await store.record(account.email,m.id,d,deleted?'deleted':execute?'processed':'preview',now);
           }}))[0];

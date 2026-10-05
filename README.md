@@ -5,17 +5,23 @@ The initial deployment is **preview only**. Local tests and previews never delet
 
 ## Behavior
 
-The classifier keeps human conversations, actionable requests, receipts/invoices, money, travel, calendar changes,
-and security messages. It flags marketing, newsletters, social digests, and routine automated summaries.
+Clef-flash applies an aggressive relevance policy based on the categories the owner discards. It keeps personal
+conversations, new requests, unresolved invoices and concrete problems needing attention. It flags marketing,
+newsletters, social digests, meeting recaps, routine receipts/statements, calendar copies and app notifications.
+Financial or security topics alone do not guarantee preservation; concrete new problems do. Cold outreach is unwanted.
 Ambiguous mail stays. Starred mail, drafts, sent mail, Spam, and Trash are protected.
 Before deletion, the message is fetched again, labels/content are compared, and recent sent replies protect the thread.
 Deletion uses selected Gmail message IDs through `batchDelete`; it never empties the mailbox's Trash.
-Model confidence is a decision threshold, **not a measured probability of correctness**.
+Clef must choose unwanted with a score of at least 0.80. This score is a decision threshold,
+**not a measured probability of correctness**. There is no target percentage or forced deletion quota.
+The October 5 local preview flagged 93 of 107 snapshot emails (87%); this is not a measured accuracy rate.
 
 The worker runs every minute in small batches. It checks inbox mail from the past 30 days plus all unread inbox mail.
 Messages outside this scope are not cleaned. State stores IDs, category, and status; it does not store bodies or subjects.
 Already processed mail is skipped. The shared daily AI cap is 500 attempts across both accounts; failures retain mail.
 Hosting must stay on the Free plan. No paid AI fallback exists. Provider quotas can postpone processing.
+Clef-flash uses one typed relevance question, no generated output, and up to 3,000 characters of body text.
+The 107-message preview used 172,340 input tokens, approximately 1,410 of the 10,000 free daily AI neurons.
 This processes mail after Gmail receives it; it does not reject mail before delivery.
 
 ## Local verification
