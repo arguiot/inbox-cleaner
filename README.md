@@ -16,13 +16,19 @@ Clef must choose unwanted with a score of at least 0.80. This score is a decisio
 **not a measured probability of correctness**. There is no target percentage or forced deletion quota.
 The October 5 local preview flagged 93 of 107 snapshot emails (87%); this is not a measured accuracy rate.
 
-The worker runs every minute in small batches. It prioritizes unread inbox mail, then checks read inbox mail from the past 30 days.
+Cloudflare durable timers run small batches every two minutes. They prioritize unread inbox mail, then check read inbox mail from the past 30 days.
 Messages outside this scope are not cleaned. State stores IDs, category, and status; it does not store bodies or subjects.
 Already processed mail is skipped. The shared daily AI cap is 500 attempts across both accounts; failures retain mail.
 Hosting must stay on the Free plan. No paid AI fallback exists. Provider quotas can postpone processing.
 Clef-flash uses one typed relevance question, no generated output, and up to 3,000 characters of body text.
 The 107-message preview used 172,340 input tokens, approximately 1,410 of the 10,000 free daily AI neurons.
 This processes mail after Gmail receives it; it does not reject mail before delivery.
+
+The scheduler renews itself approximately hourly, with one active instance enforced in D1. GitHub checks its heartbeat
+once an hour and restarts it if stale, using the existing Cloudflare deployment token; Gmail credentials stay in Cloudflare.
+Timers use about 1,500 Workflow steps/day, below the 3,000/day Free allowance. The hourly GitHub check takes about
+744 Linux runner minutes in a 31-day month, within the 2,000 monthly GitHub Free allowance shared across the account.
+Worker Cron Triggers are disabled because they did not execute during activation.
 
 ## Local verification
 
@@ -78,7 +84,8 @@ The CI/CD token cannot silently select an account from the machine's global Wran
 
 `GET /health` exposes only mode/readiness. `POST /run` requires `Authorization: Bearer <ADMIN_TOKEN>` and always previews.
 Execution logs contain counts, fixed provider status messages, and source locations; no email bodies or subjects are logged.
-To disable scheduled permanent deletion, change `MODE` to `preview` in `wrangler.jsonc`. To enable it, use `delete`
+To disable scheduled permanent deletion, change `MODE` to `preview` in `wrangler.jsonc`. Deployments update a D1
+control gate before publishing; every permanent deletion rechecks it, including running timer instances. To enable it, use `delete`
 after the actual classifier preview is reviewed and validation is complete. Each deploy retains the checked-in mode.
 
 ## Status

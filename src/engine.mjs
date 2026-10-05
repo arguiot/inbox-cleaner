@@ -2,6 +2,7 @@ import {protectedMessage, normalize} from './policy.mjs';
 import {classify} from './classifier.mjs';
 import {Gmail, accessToken} from './gmail.mjs';
 import {Store} from './store.mjs';
+import {SchedulerState} from './scheduler-state.mjs';
 
 async function pendingPage(gmail,store,account,stream,execute) {
   const page=await store.cursor(account,stream);
@@ -21,12 +22,13 @@ export async function mayDelete(message, gmail, now = Date.now()) {
     Number(m.internalDate) > now - 14*86400000);
 }
 
-export async function processMessages({messages, gmail, infer, model, execute = false, onDecision = async()=>{}}) {
+export async function processMessages({messages, gmail, infer, model, execute = false, canExecute = async()=>true, onDecision = async()=>{}}) {
   const decisions=[];
   for (const message of messages) {
     const decision = await classify(message,infer,{model});
     let deleted=false;
     if (execute && decision.action === 'delete') {
+      if (!await canExecute()) throw new Error('Deletion is disabled');
       const fresh = await gmail.get(message.id);
       // A changed message/labels must go through classification again on the next run.
       if (JSON.stringify(normalize(message)) === JSON.stringify(normalize(fresh)) && await mayDelete(fresh,gmail)) {
@@ -48,6 +50,8 @@ export async function run(env, {execute = false, fetcher = fetch, now = Date.now
   if (!accounts.length) throw new Error('Gmail accounts not configured');
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) throw new Error('Google OAuth not configured');
   if (execute && env.MODE !== 'delete') throw new Error('Deletion is disabled');
+  const state=new SchedulerState(env.DB);
+  if (execute && await state.mode()!=='delete') throw new Error('Deletion is disabled');
   const store=new Store(env.DB), owner=crypto.randomUUID();
   if (!await store.lease(owner,now)) return {mode:'busy',accounts:[]};
   const report={mode:execute?'delete':'preview',accounts:[]};
@@ -83,6 +87,7 @@ export async function run(env, {execute = false, fetcher = fetch, now = Date.now
           } finally {clearTimeout(timeout);}
         };
         const result=(await processMessages({messages:[message],gmail,infer,model:env.AI_MODEL,execute,
+          canExecute:async()=>await state.mode()==='delete',
           onDecision:async (m,d,deleted)=> {
             if (!d.retry) await store.record(account.email,m.id,d,deleted?'deleted':execute?'processed':'preview',now);
           }}))[0];

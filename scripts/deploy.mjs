@@ -23,6 +23,7 @@ if (settings.result.some(subscription => {
 })) throw new Error('Paid Workers subscription detected; refusing deployment');
 // The selected account is pinned in a generated ignored config, never inferred from global Wrangler login.
 const config=JSON.parse(await readFile('wrangler.jsonc','utf8'));
+if (!['preview','delete'].includes(config.vars?.MODE)) throw new Error('Invalid cleaner mode');
 config.account_id=accountId;
 if (process.env.CLOUDFLARE_D1_DATABASE_ID) config.d1_databases=[{binding:'DB',database_name:'inbox-cleaner-state',
   database_id:process.env.CLOUDFLARE_D1_DATABASE_ID,migrations_dir:'migrations'}];
@@ -30,9 +31,15 @@ if (!config.d1_databases?.length) throw new Error('State database ID required');
 await writeFile('.wrangler-deploy.json',JSON.stringify(config));
 try {
   for (const args of [['d1','migrations','apply','inbox-cleaner-state','--remote','--config','.wrangler-deploy.json'],
+    ['d1','execute','inbox-cleaner-state','--remote','--config','.wrangler-deploy.json','--command',
+      `UPDATE settings SET value='${config.vars.MODE}' WHERE key='mode'`],
     ['deploy','--config','.wrangler-deploy.json']]) {
     const result=spawnSync('npx',['--no-install','wrangler',...args],{stdio:'inherit',env:{...process.env,WRANGLER_SEND_METRICS:'false'}});
     if (result.status!==0) process.exitCode=result.status??1;
     if (process.exitCode) break;
+  }
+  if (!process.exitCode) {
+    const started=spawnSync(process.execPath,['scripts/scheduler.mjs'],{stdio:'inherit',env:process.env});
+    if(started.status!==0)process.exitCode=started.status??1;
   }
 } finally {await unlink('.wrangler-deploy.json');}

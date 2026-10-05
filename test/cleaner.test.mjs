@@ -12,6 +12,10 @@ test('Gmail invokes native fetch without binding it to the Gmail instance',async
   });
   assert.equal((await gmail.profile()).emailAddress,'arguiot@gmail.com');
 });
+test('a database pause between classification and deletion prevents every Gmail write',async()=>{
+  await assert.rejects(processMessages({messages:[message()],infer:async()=>disposable(),execute:true,
+    canExecute:async()=>false,gmail:{get(){throw Error('must not fetch or delete');},delete(){throw Error('must not delete');}}}),/Deletion is disabled/);
+});
 
 const disposable=()=>JSON.stringify({action:'delete',category:'marketing',confidence:0.99,reason:'Promotion'});
 const message=(overrides={})=>({id:'a1',threadId:'t1',labelIds:['INBOX'],snippet:'Big sale',

@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "inbox-cleaner",
-  "main": "src/worker.mjs",
+  "main": "src/workflow-worker.mjs",
   "compatibility_date": "2026-10-05",
   "workers_dev": true,
   "vars": {
@@ -12,6 +12,7 @@
     "EXPECTED_CLOUDFLARE_EMAIL": "arguiot@gmail.com"
   },
   "ai": {"binding": "AI", "remote": true},
-  "triggers": {"crons": ["* * * * *"]},
+  "triggers": {"crons": []},
+  "workflows": [{"binding":"CLEANER_WORKFLOW","name":"inbox-cleaner-scheduler","class_name":"InboxCleanerWorkflow"}],
   "observability": {"enabled": true, "logs": {"enabled": true, "invocation_logs": true}, "traces": {"enabled": false}}
 }
