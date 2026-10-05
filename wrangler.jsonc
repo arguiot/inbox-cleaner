@@ -13,5 +13,5 @@
   },
   "ai": {"binding": "AI", "remote": true},
   "triggers": {"crons": ["* * * * *"]},
-  "observability": {"enabled": false}
+  "observability": {"enabled": true, "logs": {"enabled": true, "invocation_logs": true}, "traces": {"enabled": false}}
 }

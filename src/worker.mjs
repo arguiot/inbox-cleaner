@@ -14,11 +14,18 @@ export default {
       return Response.json(await run(env),{headers:{'Cache-Control':'no-store'}});
     } catch {return Response.json({error:'Run failed; check account configuration and provider availability'},{status:503});}
   },
-  async scheduled(event,env,ctx) {
+  async scheduled(event,env) {
+    console.log(JSON.stringify({event:'scheduled',mode:env.MODE,ready:!!(env.DB && env.GMAIL_ACCOUNTS_JSON)}));
     if (!env.DB || !env.GMAIL_ACCOUNTS_JSON) return;
-    ctx.waitUntil(run(env,{execute:env.MODE==='delete'}).then(report=> {
+    await run(env,{execute:env.MODE==='delete'}).then(report=> {
       console.log(JSON.stringify({mode:report.mode,scanned:report.accounts.reduce((n,a)=>n+a.scanned,0),
         flagged:report.accounts.reduce((n,a)=>n+a.flagged,0),deleted:report.accounts.reduce((n,a)=>n+a.deleted,0)}));
-    }).catch(()=>console.error('Run failed; no unclassified mail was deleted')));
+    }).catch(error=> {
+      // Only our fixed messages/status codes and source locations may enter logs.
+      const message=String(error?.message ?? '');
+      const known=/^(Google token refresh \d{3}|Gmail \d{3}|Missing access token|Gmail account identity mismatch|Incomplete account credentials|State database not configured|Gmail accounts not configured|Google OAuth not configured|Deletion is disabled)$/;
+      console.error(JSON.stringify({error:known.test(message)?message:message.includes('D1_ERROR')?'State database error':'Run failed',
+        location:String(error?.stack ?? '').split('\n').slice(1,4).join('\n')}));
+    });
   },
 };

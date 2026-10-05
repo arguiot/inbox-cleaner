@@ -1,7 +1,9 @@
 export class Gmail {
   constructor(token, fetcher = fetch) { this.token = token; this.fetcher = fetcher; }
   async request(path, options = {}) {
-    const response = await this.fetcher(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
+    // Native Workers fetch rejects being invoked with a Gmail instance as its receiver.
+    const fetcher = this.fetcher;
+    const response = await fetcher(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
       ...options, headers: {Authorization:`Bearer ${this.token}`, 'Content-Type':'application/json'},
       signal:AbortSignal.timeout(15000),
     });

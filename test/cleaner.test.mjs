@@ -5,6 +5,14 @@ import {Gmail,accessToken} from '../src/gmail.mjs';
 import {processMessages,mayDelete,run} from '../src/engine.mjs';
 import worker from '../src/worker.mjs';
 
+test('Gmail invokes native fetch without binding it to the Gmail instance',async()=>{
+  const gmail=new Gmail('token',function(){
+    assert.equal(this,undefined,'Workers fetch requires its native receiver');
+    return Promise.resolve(Response.json({emailAddress:'arguiot@gmail.com'}));
+  });
+  assert.equal((await gmail.profile()).emailAddress,'arguiot@gmail.com');
+});
+
 const disposable=()=>JSON.stringify({action:'delete',category:'marketing',confidence:0.99,reason:'Promotion'});
 const message=(overrides={})=>({id:'a1',threadId:'t1',labelIds:['INBOX'],snippet:'Big sale',
   payload:{headers:[{name:'From',value:'shop@example.test'},{name:'Subject',value:'Sale'}]},...overrides});
