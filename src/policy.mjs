@@ -31,18 +31,22 @@ export function normalize(message) {
 }
 export function bodyText(payload) {
   if (!payload) return '';
-  let encoded;
+  let plain, html;
   function visit(part) {
-    if (encoded) return;
-    if ((part.mimeType ?? part.mime_type)==='text/plain' && part.body?.data) encoded=part.body.data;
+    if (part.mimeType==='text/plain' && part.body?.data && !plain) plain=part.body.data;
+    if (part.mimeType==='text/html' && part.body?.data && !html) html=part.body.data;
     for (const child of part.parts ?? []) visit(child);
   }
   visit(payload);
+  const encoded=plain??html;
   if (!encoded) return '';
   try {
-    const raw=atob(encoded.replace(/-/g,'+').replace(/_/g,'/'));
-    return new TextDecoder().decode(Uint8Array.from(raw,c=>c.charCodeAt(0)))
-      .replace(/[\u200b-\u200f\ufeff]/g,'').slice(0,6000);
+    // Decode only a bounded prefix, avoiding CPU/memory spikes from large mail.
+    const raw=atob(encoded.slice(0,16000).replace(/-/g,'+').replace(/_/g,'/'));
+    let text=new TextDecoder().decode(Uint8Array.from(raw,c=>c.charCodeAt(0)));
+    if (!plain) text=text.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi,' ')
+      .replace(/<[^>]*>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/\s+/g,' ');
+    return text.replace(/[\u200b-\u200f\ufeff]/g,'').slice(0,6000);
   } catch {return '';}
 }
 export function parseDecision(response) {
@@ -58,7 +62,7 @@ export function parseDecision(response) {
       return {action:'keep', category:'uncertain', confidence:0, reason:'Deletion criteria not met'};
     return value;
   } catch {
-    return {action:'keep', category:'uncertain', confidence:0, reason:'Invalid classifier response'};
+    return {action:'keep', category:'uncertain', confidence:0, reason:'Invalid classifier response', retry:true};
   }
 }
 export async function classify(message, infer) {

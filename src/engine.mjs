@@ -62,7 +62,12 @@ export async function run(env, {execute = false, fetcher = fetch, now = Date.now
         if (!message.labelIds?.includes('INBOX')) continue;
         const infer=async input=> {
           if (!await store.reserve(new Date(now).toISOString().slice(0,10),dailyLimit)) throw new Error('Daily AI limit reached');
-          return env.AI.run(env.AI_MODEL,input);
+          let timeout;
+          try {
+            return await Promise.race([env.AI.run(env.AI_MODEL,input),new Promise((_,reject)=>{
+              timeout=setTimeout(()=>reject(new Error('Classifier timed out')),15000);
+            })]);
+          } finally {clearTimeout(timeout);}
         };
         const result=(await processMessages({messages:[message],gmail,infer,execute,
           onDecision:async (m,d,deleted)=> {

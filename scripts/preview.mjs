@@ -4,6 +4,9 @@ import {classify,normalize} from '../src/policy.mjs';
 const [snapshotPath, reportPath='reports/preview.json']=process.argv.slice(2);
 if (!snapshotPath) throw new Error('Usage: npm run preview -- <ignored snapshot.json> [report.json]');
 if (!process.env.CF_ACCOUNT_ID || !process.env.CF_AI_TOKEN) throw new Error('Personal Cloudflare AI credentials required');
+const target=JSON.parse(await readFile('cloudflare-target.json','utf8'));
+if (target.accountId!==process.env.CF_ACCOUNT_ID || target.freePlanVerified!==true)
+  throw new Error('Personal Free-plan account must be verified before sending email to Cloudflare AI');
 const model=process.env.AI_MODEL ?? '@cf/meta/llama-3.1-8b-instruct-fp8-fast';
 const infer=async input=> {
   const response=await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CF_ACCOUNT_ID}/ai/run/${model}`,{

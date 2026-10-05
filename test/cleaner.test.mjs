@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {classify,parseDecision,POLICY,normalize} from '../src/policy.mjs';
+import {classify,parseDecision,POLICY,normalize,bodyText} from '../src/policy.mjs';
 import {Gmail,accessToken} from '../src/gmail.mjs';
 import {processMessages,mayDelete,run} from '../src/engine.mjs';
 import worker from '../src/worker.mjs';
@@ -79,4 +79,12 @@ test('missing credentials and deletion disabled fail before doing Gmail work',as
 });
 test('normalizer bounds content sent to the model',()=>{
   assert.equal(normalize(message({snippet:'a'.repeat(10000)})).snippet.length,1600);
+});
+test('UTF-8 plain text is preferred over HTML and HTML scripts are removed',()=>{
+  const encoded=s=>Buffer.from(s).toString('base64url');
+  const plain={mimeType:'text/plain',body:{data:encoded('Bonjour Arthur — facture')}};
+  const html={mimeType:'text/html',body:{data:encoded('<style>bad</style><script>bad</script><p>Order &amp; receipt</p>')}};
+  assert.equal(bodyText({parts:[html,plain]}),'Bonjour Arthur — facture');
+  assert.equal(bodyText(html).trim(),'Order & receipt');
+  assert.equal(bodyText({mimeType:'text/plain',body:{data:encoded('a'.repeat(100000))}}).length,6000);
 });
