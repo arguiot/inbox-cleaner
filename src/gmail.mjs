@@ -19,9 +19,9 @@ export class Gmail {
   }
   get(id) { return this.request(`messages/${encodeURIComponent(id)}?format=full`); }
   thread(id) { return this.request(`threads/${encodeURIComponent(id)}?format=metadata`); }
-  async delete(id) {
+  async trash(id) {
     // Message IDs come only from revalidated classifier selections. Never empty Trash.
-    await this.request('messages/batchDelete', {method:'POST', body:JSON.stringify({ids:[id]})});
+    await this.request(`messages/${encodeURIComponent(id)}/trash`, {method:'POST'});
   }
 }
 export async function accessToken(account, env, fetcher = fetch) {

@@ -5,7 +5,7 @@
   "compatibility_date": "2026-10-05",
   "workers_dev": true,
   "vars": {
-    "MODE": "delete",
+    "MODE": "trash",
     "AI_MODEL": "@cf/cloudflare/clef-flash",
     "MAX_MESSAGES_PER_ACCOUNT": "3",
     "MAX_AI_MESSAGES_PER_DAY": "500",

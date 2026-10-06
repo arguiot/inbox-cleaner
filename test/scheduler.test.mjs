@@ -8,7 +8,7 @@ import {durableSchedule} from '../src/durable-schedule.mjs';
 function fixture(){
   const sqlite=new DatabaseSync(':memory:');
   sqlite.exec(readFileSync(new URL('../migrations/0002_scheduler.sql',import.meta.url),'utf8'));
-  sqlite.exec("UPDATE settings SET value='delete' WHERE key='mode'");
+  sqlite.exec("UPDATE settings SET value='trash' WHERE key='mode'");
   const db={prepare(sql){
     const s=sqlite.prepare(sql);
     return {
@@ -17,16 +17,16 @@ function fixture(){
     };
   }};
   const sleeps=[],successors=[],results=[];
-  const env={DB:db,MODE:'delete',CLEANER_WORKFLOW:{async create(o){successors.push(o.id);}}};
+  const env={DB:db,MODE:'trash',CLEANER_WORKFLOW:{async create(o){successors.push(o.id);}}};
   const step={async do(name,options,fn){assert.equal(options.retries.limit,0);const result=await fn();results.push(result);return result;},async sleep(name,duration){sleeps.push(duration);}};
   return {sqlite,db,env,step,sleeps,successors,results};
 }
 test('one batch hands off a fresh instance, persisting only counts in three steps',async()=>{
   const f=fixture();let runs=0;
-  const process=async()=>{runs++;return {mode:'delete',accounts:[{scanned:3,flagged:2,deleted:2,account:'private'}]};};
+  const process=async()=>{runs++;return {mode:'trash',accounts:[{scanned:3,flagged:2,trashed:2,account:'private'}]};};
   assert.equal((await durableSchedule(f.env,{instanceId:'initial'},f.step,{process})).status,'renewed');
   assert.equal(runs,1);assert.deepEqual(f.sleeps,['2 minutes']);assert.equal(f.successors.length,1);
-  assert.deepEqual(f.results[0],{mode:'delete',scanned:3,flagged:2,deleted:2});
+  assert.deepEqual(f.results[0],{mode:'trash',scanned:3,flagged:2,trashed:2});
   assert.equal(f.results.length+f.sleeps.length,3);
   assert.equal(f.sqlite.prepare('SELECT owner FROM scheduler').get().owner,f.successors[0]);
 });
@@ -38,7 +38,7 @@ test('a duplicate durable instance cannot start a parallel scheduler',async()=>{
 test('database pause stops an already running workflow before renewal',async()=>{
   const f=fixture();let runs=0;
   const result=await durableSchedule(f.env,{instanceId:'running'},f.step,{process:async()=>{
-    runs++;f.sqlite.exec("UPDATE settings SET value='preview' WHERE key='mode'");return {mode:'delete',accounts:[]};
+    runs++;f.sqlite.exec("UPDATE settings SET value='preview' WHERE key='mode'");return {mode:'trash',accounts:[]};
   }});
   assert.equal(result.status,'stopped');assert.equal(runs,1);assert.equal(f.successors.length,0);
   assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM scheduler').get().n,0);
@@ -54,7 +54,7 @@ test('each successor gets a fresh bounded request budget over more than an hour'
   const process=async(env,{fetcher})=>{
     for(let i=0;i<40;i++)await fetcher('https://example.test');
     assert.throws(()=>fetcher('https://example.test'),/request budget/);
-    return {mode:'delete',accounts:[]};
+    return {mode:'trash',accounts:[]};
   };
   for(let cycle=0;cycle<32;cycle++){
     assert.equal((await durableSchedule(f.env,{instanceId:owner},f.step,{process,fetcher})).status,'renewed');
@@ -86,7 +86,7 @@ function watchdog(expired){
       if(url.endsWith('/user'))result={email:'arguiot@gmail.com'};
       else if(url.endsWith('/query')){
         const body=JSON.parse(options.body);
-        if(body.sql.startsWith('SELECT value'))result=[{results:[{value:'delete'}]},{results:[{owner:'missing-successor',expires:Date.now()+${expired?-1000:300000}}]}];
+        if(body.sql.startsWith('SELECT value'))result=[{results:[{value:'trash'}]},{results:[{owner:'missing-successor',expires:Date.now()+${expired?-1000:300000}}]}];
         else if(body.sql.startsWith('DELETE')){cleared=true;result=[];}
         else result=[{results:[{owner:created,expires:Date.now()+300000}]}];
       }else if(url.endsWith('/instances')){

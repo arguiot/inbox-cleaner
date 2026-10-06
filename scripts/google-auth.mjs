@@ -12,7 +12,7 @@ const challenge=createHash('sha256').update(verifier).digest('base64url');
 const redirect='http://127.0.0.1:8765/callback';
 const authorization=new URL('https://accounts.google.com/o/oauth2/v2/auth');
 authorization.search=new URLSearchParams({client_id:client.client_id,redirect_uri:redirect,response_type:'code',
-  scope:'https://mail.google.com/',access_type:'offline',prompt:'consent',login_hint:email,state,
+  scope:'https://www.googleapis.com/auth/gmail.modify',access_type:'offline',prompt:'consent',login_hint:email,state,
   code_challenge:challenge,code_challenge_method:'S256'}).toString();
 const timer=setTimeout(()=>{console.error('Authorization timed out');process.exit(1);},600000);
 const server=createServer(async(request,response)=>{

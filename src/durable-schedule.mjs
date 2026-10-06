@@ -8,7 +8,7 @@ export async function durableSchedule(env,event,step,{process=run,fetcher=fetch}
   // One bounded batch per instance leaves room for the successor handoff.
   const result=await step.do('clean',options,async()=>{
     if(!await state.claim(owner))return {stop:true,status:'already running'};
-    if(await state.mode()!=='delete'||env.MODE!=='delete'){
+    if(await state.mode()!=='trash'||env.MODE!=='trash'){
       await state.release(owner);return {stop:true,status:'stopped'};
     }
     let requests=0;
@@ -18,8 +18,8 @@ export async function durableSchedule(env,event,step,{process=run,fetcher=fetch}
     };
     try{
       const report=await process(env,{execute:true,fetcher:boundedFetch});
-      const counts={mode:report.mode,scanned:0,flagged:0,deleted:0};
-      for(const a of report.accounts)for(const k of ['scanned','flagged','deleted'])counts[k]+=a[k];
+      const counts={mode:report.mode,scanned:0,flagged:0,trashed:0};
+      for(const a of report.accounts)for(const k of ['scanned','flagged','trashed'])counts[k]+=a[k];
       console.log(JSON.stringify({event:'durable_cleanup',...counts}));
       return counts;
     }catch{
@@ -33,7 +33,7 @@ export async function durableSchedule(env,event,step,{process=run,fetcher=fetch}
   // Three steps per cycle stay below the Free allowance of 3,000/day.
   // Each successor receives a fresh request budget and the latest deployed code.
   return step.do('renew scheduler',options,async()=>{
-    if(await state.mode()!=='delete'||env.MODE!=='delete'){
+    if(await state.mode()!=='trash'||env.MODE!=='trash'){
       await state.release(owner);return {status:'stopped'};
     }
     const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(owner));

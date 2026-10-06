@@ -10,7 +10,7 @@ function database() {
   const sqlite=new DatabaseSync(':memory:');
   sqlite.exec(readFileSync(new URL('../migrations/0001_state.sql',import.meta.url),'utf8'));
   return {prepare(sql){
-    return {bind(...args){
+    return {async first(){return sqlite.prepare(sql).get()??null;},bind(...args){
       assert.ok(args.length<=100,'D1 bound parameter limit');
       const statement=sqlite.prepare(sql);
       return {async run(){return {meta:{changes:Number(statement.run(...args).changes)}};},
@@ -18,6 +18,30 @@ function database() {
     }};
   },sqlite};
 }
+test('scheduled cleanup moves only revalidated mail to Trash and leaves restored mail alone',async()=>{
+  const db=database(),writes=[];
+  db.sqlite.exec(readFileSync(new URL('../migrations/0002_scheduler.sql',import.meta.url),'utf8'));
+  db.sqlite.exec("UPDATE settings SET value='trash' WHERE key='mode'");
+  const mail={id:'a',threadId:'t',labelIds:['INBOX'],payload:{headers:[]},snippet:'Sale'};
+  const fetcher=async(url,options={})=>{
+    if(url.endsWith('/token'))return Response.json({access_token:'token'});
+    if(url.endsWith('/profile'))return Response.json({emailAddress:'arguiot@gmail.com'});
+    if(url.includes('/messages?'))return Response.json({messages:[{id:'a'}]});
+    if(url.includes('/messages/a?'))return Response.json(mail);
+    if(url.includes('/threads/t?'))return Response.json({messages:[]});
+    writes.push({url,options});
+    assert.equal(options.method,'POST');assert.ok(url.endsWith('/messages/a/trash'));
+    return Response.json({...mail,labelIds:['TRASH']});
+  };
+  const env={DB:db,GMAIL_ACCOUNTS_JSON:JSON.stringify([{email:'arguiot@gmail.com',refreshToken:'refresh'}]),
+    GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret',MODE:'trash',AI_MODEL:CLEF_MODEL,
+    AI:{run:async()=>({answers:{relevance:{type:'choice',choice:'unwanted',probabilities:{unwanted:0.95,wanted:0.05}}}})}};
+  const report=await run(env,{execute:true,fetcher});
+  assert.equal(report.mode,'trash');assert.equal(report.accounts[0].trashed,1);
+  assert.equal(writes.length,1);assert.equal(db.sqlite.prepare('SELECT status FROM messages').get().status,'trashed');
+  const restored=await run(env,{execute:true,fetcher});
+  assert.equal(restored.accounts[0].trashed,0);assert.equal(writes.length,1);
+});
 test('run lease excludes concurrent runs and cannot be released by another owner',async()=>{
   const store=new Store(database());
   assert.equal(await store.lease('first',100),true);
@@ -69,7 +93,7 @@ test('entire scheduled preview runs through OAuth, account verification, Gmail r
     AI:{run:async(model,input)=>{inferenceCalls++;assert.equal(model,CLEF_MODEL);assert.equal(input.model,'clef-flash');
       return {answers:{relevance:{type:'choice',choice:'unwanted',probabilities:{unwanted:0.95,wanted:0.05}}}};}}};
   const report=await run(env,{fetcher});
-  assert.equal(report.accounts[0].flagged,1);assert.equal(report.accounts[0].deleted,0);assert.equal(writes.length,0);
+  assert.equal(report.accounts[0].flagged,1);assert.equal(report.accounts[0].trashed,0);assert.equal(writes.length,0);
   assert.equal(inferenceCalls,1);
   const second=await run(env,{fetcher});
   assert.equal(second.accounts[0].scanned,0);assert.equal(inferenceCalls,1);

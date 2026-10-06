@@ -23,7 +23,7 @@ if (settings.result.some(subscription => {
 })) throw new Error('Paid Workers subscription detected; refusing deployment');
 // The selected account is pinned in a generated ignored config, never inferred from global Wrangler login.
 const config=JSON.parse(await readFile('wrangler.jsonc','utf8'));
-if (!['preview','delete'].includes(config.vars?.MODE)) throw new Error('Invalid cleaner mode');
+if (!['preview','trash'].includes(config.vars?.MODE)) throw new Error('Invalid cleaner mode');
 config.account_id=accountId;
 if (process.env.CLOUDFLARE_D1_DATABASE_ID) config.d1_databases=[{binding:'DB',database_name:'inbox-cleaner-state',
   database_id:process.env.CLOUDFLARE_D1_DATABASE_ID,migrations_dir:'migrations'}];

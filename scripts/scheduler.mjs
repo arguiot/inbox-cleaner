@@ -12,7 +12,7 @@ async function api(path,options={},allowMissing=false){
 const user=await api('/user');if(user.email?.toLowerCase()!=='arguiot@gmail.com')throw Error('Personal Cloudflare identity mismatch');
 const result=await api(`/accounts/${account}/d1/database/${db}/query`,{method:'POST',body:JSON.stringify({sql:
   "SELECT value FROM settings WHERE key='mode'; SELECT owner,expires FROM scheduler WHERE id=1;"})});
-if(result[0].results[0]?.value!=='delete'){console.log('Scheduled deletion is disabled.');process.exit(0);}
+if(result[0].results[0]?.value!=='trash'){console.log('Scheduled cleanup is disabled.');process.exit(0);}
 const active=result[1].results[0];
 if(active){
   const instance=await api(`/accounts/${account}/workflows/inbox-cleaner-scheduler/instances/${encodeURIComponent(active.owner)}`,{},true);

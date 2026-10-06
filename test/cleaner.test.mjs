@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {classify,parseDecision,POLICY,normalize,bodyText} from '../src/policy.mjs';
 import {Gmail,accessToken} from '../src/gmail.mjs';
-import {processMessages,mayDelete,run} from '../src/engine.mjs';
+import {processMessages,mayTrash,run} from '../src/engine.mjs';
 import worker from '../src/worker.mjs';
 
 test('Gmail invokes native fetch without binding it to the Gmail instance',async()=>{
@@ -12,9 +12,9 @@ test('Gmail invokes native fetch without binding it to the Gmail instance',async
   });
   assert.equal((await gmail.profile()).emailAddress,'arguiot@gmail.com');
 });
-test('a database pause between classification and deletion prevents every Gmail write',async()=>{
+test('a database pause between classification and trashing prevents every Gmail write',async()=>{
   await assert.rejects(processMessages({messages:[message()],infer:async()=>disposable(),execute:true,
-    canExecute:async()=>false,gmail:{get(){throw Error('must not fetch or delete');},delete(){throw Error('must not delete');}}}),/Deletion is disabled/);
+    canExecute:async()=>false,gmail:{get(){throw Error('must not fetch or delete');},trash(){throw Error('must not delete');}}}),/Cleanup is disabled/);
 });
 
 const disposable=()=>JSON.stringify({action:'delete',category:'marketing',confidence:0.99,reason:'Promotion'});
@@ -53,33 +53,33 @@ test('untrusted message instructions stay in user data and never override policy
 });
 test('preview makes zero Gmail writes even when all messages are flagged',async()=>{
   let writes=0;
-  const results=await processMessages({messages:[message()],gmail:{delete:()=>writes++},infer:async()=>disposable()});
-  assert.equal(results[0].action,'delete'); assert.equal(results[0].deleted,false); assert.equal(writes,0);
+  const results=await processMessages({messages:[message()],gmail:{trash:()=>writes++},infer:async()=>disposable()});
+  assert.equal(results[0].action,'delete'); assert.equal(results[0].trashed,false); assert.equal(writes,0);
 });
-test('delete re-fetches and checks thread before deleting only the selected ID',async()=>{
+test('trash re-fetches and checks thread before moving only the selected ID',async()=>{
   const calls=[];
   const gmail={get:async id=>{calls.push(['get',id]);return message();},thread:async id=>{calls.push(['thread',id]);return {messages:[]};},
-    delete:async id=>calls.push(['delete',id])};
+    trash:async id=>calls.push(['trash',id])};
   const results=await processMessages({messages:[message()],gmail,infer:async()=>disposable(),execute:true});
-  assert.equal(results[0].deleted,true);
-  assert.deepEqual(calls,[['get','a1'],['thread','t1'],['delete','a1']]);
+  assert.equal(results[0].trashed,true);
+  assert.deepEqual(calls,[['get','a1'],['thread','t1'],['trash','a1']]);
 });
 test('a newly starred message, changed content, or inbox removal prevents deletion',async()=>{
   for (const fresh of [message({labelIds:['INBOX','STARRED']}),message({snippet:'Changed'}),message({labelIds:[]})]) {
     let writes=0;
-    const gmail={get:async()=>fresh,thread:async()=>({messages:[]}),delete:async()=>writes++};
+    const gmail={get:async()=>fresh,thread:async()=>({messages:[]}),trash:async()=>writes++};
     const results=await processMessages({messages:[message()],gmail,infer:async()=>disposable(),execute:true});
     assert.equal(writes,0); assert.equal(results[0].action,'keep');
   }
 });
 test('a recent reply by the account owner protects the conversation',async()=>{
-  assert.equal(await mayDelete(message(),{thread:async()=>({messages:[{labelIds:['SENT'],internalDate:String(Date.now())}]})}),false);
+  assert.equal(await mayTrash(message(),{thread:async()=>({messages:[{labelIds:['SENT'],internalDate:String(Date.now())}]})}),false);
 });
-test('Gmail deletion uses scoped batchDelete, never Trash cleanup',async()=>{
+test('Gmail cleanup uses only message Trash API, never permanent deletion',async()=>{
   let call;
   const gmail=new Gmail('token',async(url,init)=>{call={url,init};return new Response('{}');});
-  await gmail.delete('a1');
-  assert.match(call.url,/messages\/batchDelete$/);assert.deepEqual(JSON.parse(call.init.body),{ids:['a1']});
+  await gmail.trash('a1');
+  assert.match(call.url,/messages\/a1\/trash$/);assert.equal(call.init.method,'POST');assert.equal(call.init.body,undefined);assert.equal(gmail.delete,undefined);
 });
 test('OAuth errors never disclose provider response or credentials',async()=>{
   await assert.rejects(accessToken({refreshToken:'sensitive'}, {},async()=>new Response('secret',{status:401})),

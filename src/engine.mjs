@@ -15,7 +15,7 @@ async function pendingPage(gmail,store,account,stream,execute) {
   return {listed,candidates};
 }
 
-export async function mayDelete(message, gmail, now = Date.now()) {
+export async function mayTrash(message, gmail, now = Date.now()) {
   if (protectedMessage(message) || !message.labelIds?.includes('INBOX')) return false;
   const thread = await gmail.thread(message.threadId);
   return !(thread.messages ?? []).some(m => m.labelIds?.includes('SENT') &&
@@ -26,20 +26,20 @@ export async function processMessages({messages, gmail, infer, model, execute = 
   const decisions=[];
   for (const message of messages) {
     const decision = await classify(message,infer,{model});
-    let deleted=false;
+    let trashed=false;
     if (execute && decision.action === 'delete') {
-      if (!await canExecute()) throw new Error('Deletion is disabled');
+      if (!await canExecute()) throw new Error('Cleanup is disabled');
       const fresh = await gmail.get(message.id);
       // A changed message/labels must go through classification again on the next run.
-      if (JSON.stringify(normalize(message)) === JSON.stringify(normalize(fresh)) && await mayDelete(fresh,gmail)) {
-        await gmail.delete(message.id);
-        deleted=true;
+      if (JSON.stringify(normalize(message)) === JSON.stringify(normalize(fresh)) && await mayTrash(fresh,gmail)) {
+        await gmail.trash(message.id);
+        trashed=true;
       } else {
         decision.action='keep'; decision.category='uncertain'; decision.reason='Changed or protected conversation';
       }
     }
-    await onDecision(message,decision,deleted);
-    decisions.push({id:message.id,...decision,deleted});
+    await onDecision(message,decision,trashed);
+    decisions.push({id:message.id,...decision,trashed});
   }
   return decisions;
 }
@@ -49,12 +49,12 @@ export async function run(env, {execute = false, fetcher = fetch, now = Date.now
   const accounts=JSON.parse(env.GMAIL_ACCOUNTS_JSON ?? '[]');
   if (!accounts.length) throw new Error('Gmail accounts not configured');
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) throw new Error('Google OAuth not configured');
-  if (execute && env.MODE !== 'delete') throw new Error('Deletion is disabled');
+  if (execute && env.MODE !== 'trash') throw new Error('Cleanup is disabled');
   const state=new SchedulerState(env.DB);
-  if (execute && await state.mode()!=='delete') throw new Error('Deletion is disabled');
+  if (execute && await state.mode()!=='trash') throw new Error('Cleanup is disabled');
   const store=new Store(env.DB), owner=crypto.randomUUID();
   if (!await store.lease(owner,now)) return {mode:'busy',accounts:[]};
-  const report={mode:execute?'delete':'preview',accounts:[]};
+  const report={mode:execute?'trash':'preview',accounts:[]};
   const deadline=Date.now()+45000;
   try {
     const batchLimit=Math.min(3,Math.max(1,Number(env.MAX_MESSAGES_PER_ACCOUNT ?? 3)));
@@ -71,7 +71,7 @@ export async function run(env, {execute = false, fetcher = fetch, now = Date.now
         stream='recent';
         ({listed,candidates}=await pendingPage(gmail,store,account.email,stream,execute));
       }
-      const summary={account:account.email,scanned:0,flagged:0,deleted:0,kept:0,deferred:0};
+      const summary={account:account.email,scanned:0,flagged:0,trashed:0,kept:0,deferred:0};
       report.accounts.push(summary);
       for (const id of candidates.slice(0,batchLimit)) {
         if (Date.now()>deadline) {summary.deferred++;break;}
@@ -87,14 +87,14 @@ export async function run(env, {execute = false, fetcher = fetch, now = Date.now
           } finally {clearTimeout(timeout);}
         };
         const result=(await processMessages({messages:[message],gmail,infer,model:env.AI_MODEL,execute,
-          canExecute:async()=>await state.mode()==='delete',
-          onDecision:async (m,d,deleted)=> {
-            if (!d.retry) await store.record(account.email,m.id,d,deleted?'deleted':execute?'processed':'preview',now);
+          canExecute:async()=>await state.mode()==='trash',
+          onDecision:async (m,d,trashed)=> {
+            if (!d.retry) await store.record(account.email,m.id,d,trashed?'trashed':execute?'processed':'preview',now);
           }}))[0];
         summary.scanned++;
         if (result.retry) {summary.deferred++;break;}
         if (result.action==='delete') summary.flagged++; else summary.kept++;
-        if (result.deleted) summary.deleted++;
+        if (result.trashed) summary.trashed++;
       }
       // Stay on this page until every candidate has been processed; then paginate the backlog.
       if (candidates.length<=summary.scanned && !summary.deferred) await store.setCursor(account.email,listed.nextPageToken,stream);

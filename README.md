@@ -1,7 +1,7 @@
 # Inbox Cleaner
 
 An unattended cleaner for two Gmail accounts, hosted on Cloudflare Workers Free with Workers AI.
-Scheduled runs apply the owner's approved **permanent deletion** policy. Snapshot previews and tests never change Gmail.
+Scheduled runs move flagged messages to **Gmail Trash**, where they can be restored for 30 days before Gmail automatically removes them. Snapshot previews and tests never change Gmail.
 
 ## Behavior
 
@@ -11,7 +11,7 @@ newsletters, social digests, meeting recaps, routine receipts/statements, calend
 Financial or security topics alone do not guarantee preservation; concrete new problems do. Cold outreach is unwanted.
 Ambiguous mail stays. Starred mail, drafts, sent mail, Spam, and Trash are protected.
 Before deletion, the message is fetched again, labels/content are compared, and recent sent replies protect the thread.
-Deletion uses selected Gmail message IDs through `batchDelete`; it never empties the mailbox's Trash.
+Cleanup uses `messages/{id}/trash` for each revalidated message; no permanent-deletion API is implemented and the cleaner never empties Trash. Previously permanently deleted messages cannot be restored by this change.
 Clef must choose unwanted with a score of at least 0.80. This score is a decision threshold,
 **not a measured probability of correctness**. There is no target percentage or forced deletion quota.
 The October 5 local preview flagged 93 of 107 snapshot emails (87%); this is not a measured accuracy rate.
@@ -65,7 +65,7 @@ npm run auth:gmail -- private/google-client.json arthur@circleback.ai
 
 The helper validates OAuth state, uses PKCE, checks account identity, and writes refresh tokens to ignored
 `private/accounts.json` with owner-only permissions. Tokens and mail snapshots never belong in Git or CI artifacts.
-The full Gmail scope is required for permanent deletion.
+New connections request `gmail.modify` to read mail and move it to Trash. Existing full Gmail grants remain valid; switching behavior does not require another sign-in.
 
 ## Personal Cloudflare deployment
 
@@ -86,8 +86,8 @@ The CI/CD token cannot silently select an account from the machine's global Wran
 
 `GET /health` exposes only mode/readiness. `POST /run` requires `Authorization: Bearer <ADMIN_TOKEN>` and always previews.
 Execution logs contain counts, fixed provider status messages, and source locations; no email bodies or subjects are logged.
-To disable scheduled permanent deletion, change `MODE` to `preview` in `wrangler.jsonc`. Deployments update a D1
-control gate before publishing; every permanent deletion rechecks it, including running timer instances. To enable it, use `delete`
+To disable scheduled cleanup, change `MODE` to `preview` in `wrangler.jsonc`. Deployments update a D1
+control gate before publishing; every move to Trash rechecks it, including running timer instances. To enable it, use `trash`
 after the actual classifier preview is reviewed and validation is complete. Each deploy retains the checked-in mode.
 
 ## Status
