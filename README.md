@@ -24,9 +24,11 @@ Clef-flash uses one typed relevance question, no generated output, and up to 3,0
 The 107-message preview used 172,340 input tokens, approximately 1,410 of the 10,000 free daily AI neurons.
 This processes mail after Gmail receives it; it does not reject mail before delivery.
 
-The scheduler renews itself approximately hourly, with one active instance enforced in D1. GitHub checks its heartbeat
+The scheduler runs one bounded batch per instance and starts a fresh successor every two minutes, with one active cleaner enforced in D1.
+The Free plan's request limits accumulate across a whole Workflow; they do not reset after a sleep. Gmail fetches are capped at 40 per instance,
+leaving room below the 50 external-request limit for renewal. GitHub checks its heartbeat
 once an hour and restarts it if stale, using the existing Cloudflare deployment token; Gmail credentials stay in Cloudflare.
-Timers use about 1,500 Workflow steps/day, below the 3,000/day Free allowance. The hourly GitHub check takes about
+Timers use at most 2,160 Workflow steps/day (three per two-minute cycle), below the 3,000/day Free allowance. The hourly GitHub check takes about
 744 Linux runner minutes in a 31-day month, within the 2,000 monthly GitHub Free allowance shared across the account.
 Worker Cron Triggers are disabled because they did not execute during activation.
 

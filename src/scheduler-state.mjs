@@ -12,7 +12,7 @@ export class SchedulerState {
     return r.meta.changes===1;
   }
   async handoff(owner,next,now=Date.now()){
-    const r=await this.db.prepare('UPDATE scheduler SET owner=?,expires=? WHERE id=1 AND owner=?').bind(next,now+300000,owner).run();
+    const r=await this.db.prepare('UPDATE scheduler SET owner=?,expires=? WHERE id=1 AND (owner=? OR owner=?)').bind(next,now+300000,owner,next).run();
     return r.meta.changes===1;
   }
   release(owner){return this.db.prepare('DELETE FROM scheduler WHERE id=1 AND owner=?').bind(owner).run();}
