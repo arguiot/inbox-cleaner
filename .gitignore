@@ -10,3 +10,6 @@ credentials*.json
 tokens*.json
 *.log
 .DS_Store
+
+# Local deployment identity. Publish only the example.
+cloudflare-target.json

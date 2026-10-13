@@ -5,14 +5,33 @@
   "compatibility_date": "2026-10-05",
   "workers_dev": true,
   "vars": {
-    "MODE": "trash",
+    "MODE": "preview",
     "AI_MODEL": "@cf/cloudflare/clef-flash",
     "MAX_MESSAGES_PER_ACCOUNT": "3",
-    "MAX_AI_MESSAGES_PER_DAY": "500",
-    "EXPECTED_CLOUDFLARE_EMAIL": "arguiot@gmail.com"
+    "MAX_AI_MESSAGES_PER_DAY": "500"
   },
-  "ai": {"binding": "AI", "remote": true},
-  "triggers": {"crons": []},
-  "workflows": [{"binding":"CLEANER_WORKFLOW","name":"inbox-cleaner-scheduler","class_name":"InboxCleanerWorkflow"}],
-  "observability": {"enabled": true, "logs": {"enabled": true, "invocation_logs": true}, "traces": {"enabled": false}}
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  },
+  "triggers": {
+    "crons": []
+  },
+  "workflows": [
+    {
+      "binding": "CLEANER_WORKFLOW",
+      "name": "inbox-cleaner-scheduler",
+      "class_name": "InboxCleanerWorkflow"
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": false
+    }
+  }
 }

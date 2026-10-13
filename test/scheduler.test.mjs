@@ -76,14 +76,14 @@ test('handoff can be replayed after the state update, without stealing a later o
   assert.equal(await s.handoff('initial','next'),false);
 });
 function watchdog(expired){
-  const target=JSON.parse(readFileSync(new URL('../cloudflare-target.json',import.meta.url),'utf8'));
+  const target={accountId:'a'.repeat(32),email:'owner@example.test'};
   const script=new URL('../scripts/scheduler.mjs',import.meta.url).href;
   const code=`
     let cleared=false,created;
     globalThis.setTimeout=fn=>{queueMicrotask(fn);return 0;};
     globalThis.fetch=async(url,options={})=>{
       let result;
-      if(url.endsWith('/user'))result={email:'arguiot@gmail.com'};
+      if(url.endsWith('/user'))result={email:'owner@example.test'};
       else if(url.endsWith('/query')){
         const body=JSON.parse(options.body);
         if(body.sql.startsWith('SELECT value'))result=[{results:[{value:'trash'}]},{results:[{owner:'missing-successor',expires:Date.now()+${expired?-1000:300000}}]}];
@@ -100,11 +100,12 @@ function watchdog(expired){
   `;
   return execFileSync(process.execPath,['--input-type=module','--eval',code],{
     cwd:new URL('../',import.meta.url),encoding:'utf8',env:{...process.env,
-      CLOUDFLARE_ACCOUNT_ID:target.accountId,CLOUDFLARE_D1_DATABASE_ID:'test-db',CLOUDFLARE_API_TOKEN:'test-only'},
+      CLOUDFLARE_ACCOUNT_ID:target.accountId,CLOUDFLARE_D1_DATABASE_ID:'test-db',CLOUDFLARE_API_TOKEN:'test-only',
+      CLOUDFLARE_EXPECTED_EMAIL:target.email,CLOUDFLARE_FREE_PLAN_VERIFIED:'true'},
   });
 }
 test('watchdog recovers an expired lease pointing to an uncreated successor',()=>{
-  assert.match(watchdog(true),/Verified personal Cloudflare durable scheduler/);
+  assert.match(watchdog(true),/Verified configured Cloudflare durable scheduler/);
 });
 test('watchdog allows an in-progress handoff to finish instead of racing it',()=>{
   assert.match(watchdog(false),/handoff pending/);

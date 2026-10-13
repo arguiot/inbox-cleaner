@@ -3,7 +3,7 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {randomBytes,createHash} from 'node:crypto';
 import {Gmail} from '../src/gmail.mjs';
 const [clientFile,email]=process.argv.slice(2);
-if (!clientFile || !['arguiot@gmail.com','arthur@circleback.ai'].includes(email))
+if (!clientFile || !/^\S+@\S+\.\S+$/.test(email??''))
   throw new Error('Usage: npm run auth:gmail -- private/google-client.json <account-email>');
 const raw=JSON.parse(await readFile(clientFile,'utf8')), client=raw.installed??raw.web;
 if (!client?.client_id || !client.client_secret) throw new Error('Google OAuth client file required');
@@ -28,7 +28,7 @@ const server=createServer(async(request,response)=>{
     const tokens=await exchange.json();
     if (!tokens.refresh_token) throw new Error('Offline authorization missing');
     const profile=await new Gmail(tokens.access_token).profile();
-    if (profile.emailAddress.toLowerCase()!==email) throw new Error('Wrong Google account');
+    if (profile.emailAddress.toLowerCase()!==email.toLowerCase()) throw new Error('Wrong Google account');
     await mkdir('private',{recursive:true});
     let accounts=[];
     try {accounts=JSON.parse(await readFile('private/accounts.json','utf8'));} catch(error) {if (error.code!=='ENOENT') throw error;}

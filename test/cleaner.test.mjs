@@ -8,9 +8,9 @@ import worker from '../src/worker.mjs';
 test('Gmail invokes native fetch without binding it to the Gmail instance',async()=>{
   const gmail=new Gmail('token',function(){
     assert.equal(this,undefined,'Workers fetch requires its native receiver');
-    return Promise.resolve(Response.json({emailAddress:'arguiot@gmail.com'}));
+    return Promise.resolve(Response.json({emailAddress:'owner@example.test'}));
   });
-  assert.equal((await gmail.profile()).emailAddress,'arguiot@gmail.com');
+  assert.equal((await gmail.profile()).emailAddress,'owner@example.test');
 });
 test('a database pause between classification and trashing prevents every Gmail write',async()=>{
   await assert.rejects(processMessages({messages:[message()],infer:async()=>disposable(),execute:true,
@@ -100,9 +100,9 @@ test('normalizer bounds content sent to the model',()=>{
 });
 test('UTF-8 plain text is preferred over HTML and HTML scripts are removed',()=>{
   const encoded=s=>Buffer.from(s).toString('base64url');
-  const plain={mimeType:'text/plain',body:{data:encoded('Bonjour Arthur — facture')}};
+  const plain={mimeType:'text/plain',body:{data:encoded('Bonjour — facture')}};
   const html={mimeType:'text/html',body:{data:encoded('<style>bad</style><script>bad</script><p>Order &amp; receipt</p>')}};
-  assert.equal(bodyText({parts:[html,plain]}),'Bonjour Arthur — facture');
+  assert.equal(bodyText({parts:[html,plain]}),'Bonjour — facture');
   assert.equal(bodyText(html).trim(),'Order & receipt');
   assert.equal(bodyText({mimeType:'text/plain',body:{data:encoded('a'.repeat(100000))}}).length,6000);
 });

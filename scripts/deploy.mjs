@@ -1,16 +1,17 @@
 import {readFile,writeFile,unlink} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
+import {cloudflareTarget} from './cloudflare-target.mjs';
 const accountId=process.env.CLOUDFLARE_ACCOUNT_ID;
-if (!accountId || !process.env.CLOUDFLARE_API_TOKEN) throw new Error('Personal Cloudflare deployment credentials required');
-const target=JSON.parse(await readFile('cloudflare-target.json','utf8'));
-if (target.accountId!==accountId || target.freePlanVerified!==true || target.email!=='arguiot@gmail.com')
-  throw new Error('Deployment target must be pinned after verifying the personal account and Free plan');
+if (!accountId || !process.env.CLOUDFLARE_API_TOKEN) throw new Error('Cloudflare deployment credentials required');
+const target=cloudflareTarget();
+if (target.accountId!==accountId || target.freePlanVerified!==true)
+  throw new Error('Deployment target must be pinned after verifying the configured account and Free plan');
 const response=await fetch('https://api.cloudflare.com/client/v4/user',{
   headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`},signal:AbortSignal.timeout(15000),
 });
 const user=await response.json();
-if (!response.ok || user.result?.email?.toLowerCase()!=='arguiot@gmail.com')
-  throw new Error('Refusing deployment: token must identify the personal arguiot@gmail.com Cloudflare user');
+if (!response.ok || user.result?.email?.toLowerCase()!==target.email)
+  throw new Error('Refusing deployment: token owner must match the configured Cloudflare email');
 const planResponse=await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/subscriptions`,{
   headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`},signal:AbortSignal.timeout(15000),
 });
@@ -23,6 +24,7 @@ if (settings.result.some(subscription => {
 })) throw new Error('Paid Workers subscription detected; refusing deployment');
 // The selected account is pinned in a generated ignored config, never inferred from global Wrangler login.
 const config=JSON.parse(await readFile('wrangler.jsonc','utf8'));
+if(process.env.CLEANER_MODE) config.vars.MODE=process.env.CLEANER_MODE;
 if (!['preview','trash'].includes(config.vars?.MODE)) throw new Error('Invalid cleaner mode');
 config.account_id=accountId;
 if (process.env.CLOUDFLARE_D1_DATABASE_ID) config.d1_databases=[{binding:'DB',database_name:'inbox-cleaner-state',

@@ -1,96 +1,125 @@
 # Inbox Cleaner
 
-An unattended cleaner for two Gmail accounts, hosted on Cloudflare Workers Free with Workers AI.
-Scheduled runs move flagged messages to **Gmail Trash**, where they can be restored for 30 days before Gmail automatically removes them. Snapshot previews and tests never change Gmail.
+A self-hosted Gmail cleaner using Cloudflare Workers, Workflows, D1, and Workers AI.
+Clef-flash classifies unwanted mail and moves it to **Gmail Trash**. It runs in the cloud without keeping a computer open.
+Licensed under [MIT](LICENSE).
+
+The default policy is aggressive: keep personal conversations, specific requests, unresolved invoices, and concrete problems
+needing attention; flag marketing, newsletters, cold outreach, digests, meeting recaps, and routine notifications.
+Review a preview against your own mail before enabling it. Classification can make mistakes. Model scores are decision
+thresholds, not measured probabilities of correctness.
 
 ## Behavior
 
-Clef-flash applies an aggressive relevance policy based on the categories the owner discards. It keeps personal
-conversations, new requests, unresolved invoices and concrete problems needing attention. It flags marketing,
-newsletters, social digests, meeting recaps, routine receipts/statements, calendar copies and app notifications.
-Financial or security topics alone do not guarantee preservation; concrete new problems do. Cold outreach is unwanted.
-Ambiguous mail stays. Starred mail, drafts, sent mail, Spam, and Trash are protected.
-Before deletion, the message is fetched again, labels/content are compared, and recent sent replies protect the thread.
-Cleanup uses `messages/{id}/trash` for each revalidated message; no permanent-deletion API is implemented and the cleaner never empties Trash. Previously permanently deleted messages cannot be restored by this change.
-Clef must choose unwanted with a score of at least 0.80. This score is a decision threshold,
-**not a measured probability of correctness**. There is no target percentage or forced deletion quota.
-The October 5 local preview flagged 93 of 107 snapshot emails (87%); this is not a measured accuracy rate.
+A small batch runs approximately every two minutes, prioritizing all unread inbox messages before read inbox mail from
+the past 30 days. Up to three messages per account are processed per batch, with a shared cap of 500 AI attempts per UTC day.
+Starred messages, drafts, sent mail, Spam, and Trash are protected. Fresh content/labels are checked before moving a message;
+recent sent replies protect the conversation.
 
-Cloudflare durable timers run small batches every two minutes. They prioritize unread inbox mail, then check read inbox mail from the past 30 days.
-Messages outside this scope are not cleaned. State stores IDs, category, and status; it does not store bodies or subjects.
-Already processed mail is skipped. The shared daily AI cap is 500 attempts across both accounts; failures retain mail.
-Hosting must stay on the Free plan. No paid AI fallback exists. Provider quotas can postpone processing.
-Clef-flash uses one typed relevance question, no generated output, and up to 3,000 characters of body text.
-The 107-message preview used 172,340 input tokens, approximately 1,410 of the 10,000 free daily AI neurons.
-This processes mail after Gmail receives it; it does not reject mail before delivery.
+Flagged messages go to Trash, where you can restore them for 30 days before Gmail automatically deletes them.
+The cleaner never empties Trash and has no permanent-deletion function. Restored messages already recorded by the cleaner
+are skipped. Processing happens after Gmail receives mail; this does not reject messages before delivery.
 
-The scheduler runs one bounded batch per instance and starts a fresh successor every two minutes, with one active cleaner enforced in D1.
-The Free plan's request limits accumulate across a whole Workflow; they do not reset after a sleep. Gmail fetches are capped at 40 per instance,
-leaving room below the 50 external-request limit for renewal. GitHub checks its heartbeat
-once an hour and restarts it if stale, using the existing Cloudflare deployment token; Gmail credentials stay in Cloudflare.
-Timers use at most 2,160 Workflow steps/day (three per two-minute cycle), below the 3,000/day Free allowance. The hourly GitHub check takes about
-744 Linux runner minutes in a 31-day month, within the 2,000 monthly GitHub Free allowance shared across the account.
-Worker Cron Triggers are disabled because they did not execute during activation.
+A D1 lease prevents concurrent cleanup. Each workflow processes one bounded batch, sleeps, then starts a fresh successor.
+The GitHub watchdog checks its heartbeat hourly and recovers a stale scheduler. No public connection endpoint exists;
+the optional authenticated HTTP run endpoint only previews decisions.
 
-## Local verification
+## Setup
+
+Use your own Gmail OAuth client and Cloudflare account. New checkouts start in **preview** mode.
+Forks do not inherit the original repository's deployment secrets or variables.
+
+### 1. Install and verify
+
+Node.js 22 or later is required.
 
 ```sh
 npm ci --ignore-scripts
 npm run check
 npm test
 npx wrangler deploy --dry-run
+cp cloudflare-target.example.json cloudflare-target.json
 ```
 
-To classify a connector-exported snapshot without Gmail writes:
+Fill in your Cloudflare account ID and the email that owns its API token in `cloudflare-target.json`.
+Verify Workers Free before setting `freePlanVerified` to `true`. This local file is ignored by Git.
+Deployment compares the account and token-owner email, and refuses a paid Workers subscription.
+
+### 2. Connect Gmail
+
+Create a Google Cloud project, enable Gmail API, and create a Desktop OAuth client. Save its downloaded JSON as
+`private/google-client.json`. Configure the consent app for personal use and set it to Production; Testing-mode refresh
+credentials for Gmail scopes can expire after seven days. Each account requires one-time consent.
+
+```sh
+npm run auth:gmail -- private/google-client.json you@example.com
+# Optional additional account:
+npm run auth:gmail -- private/google-client.json work@example.com
+```
+
+The helper uses OAuth state and PKCE, checks account identity, and saves refresh tokens in `private/accounts.json`
+with owner-only permissions. New connections request `gmail.modify`; existing full Gmail grants also work.
+Keep credentials, snapshots, and reports out of Git. They are ignored by default.
+
+### 3. Configure hosting
+
+Create a D1 database named `inbox-cleaner-state` in the chosen account. Store `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+and `GMAIL_ACCOUNTS_JSON` as Worker secrets directly in Cloudflare. The accounts secret contains `private/accounts.json`.
+
+Create the GitHub environment `personal-cloudflare` and add `CLOUDFLARE_API_TOKEN` as an environment secret.
+The token needs Workers Scripts Edit, D1 Edit, Workers AI access, account subscriptions read, and User Details Read.
+Gmail credentials belong in Cloudflare, not GitHub Actions.
+
+Set these repository variables:
+
+| Variable | Value |
+| --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | Your selected account ID |
+| `CLOUDFLARE_D1_DATABASE_ID` | Your D1 database ID |
+| `CLOUDFLARE_EXPECTED_EMAIL` | The email that owns the token |
+| `CLOUDFLARE_FREE_PLAN_VERIFIED` | `true`, after verifying Workers Free |
+| `CLOUDFLARE_DEPLOY_ENABLED` | `true` |
+| `CLEANER_MODE` | `preview` initially |
+
+Restrict the deployment environment to the `main` branch. Deployment and watchdog workflows also require `main`;
+pull-request CI has no deployment credentials. Push to `main` to apply migrations and deploy.
+
+### 4. Preview, activate, and pause
+
+A private snapshot is an array of `{email,messages}` accounts with messages in Gmail API format.
+Copy `.env.example` to ignored `.dev.vars` and fill in `CF_ACCOUNT_ID` and `CF_AI_TOKEN` for your configured account.
 
 ```sh
 node --env-file=.dev.vars scripts/preview.mjs private/snapshot.json reports/preview.json
 ```
 
-The snapshot format is an array of `{email,messages}` accounts, with messages in Gmail API format.
-Set `CF_ACCOUNT_ID` and `CF_AI_TOKEN` for **the personal Cloudflare account**. Reports remain ignored by Git.
-This runs the actual classification code against live Cloudflare AI. Unit tests use synthetic mail and mock providers.
+This sends message text to Cloudflare AI without changing Gmail. Review the ignored report.
+The relevance policy is in `src/classifier.mjs`; customize it to fit what you want to keep.
+A snapshot preview is not an accuracy evaluation or proof that a live deployment works.
 
-## Gmail authorization
+After reviewing a preview, set `CLEANER_MODE=trash` and run the deployment workflow.
+The checked-in configuration stays in preview mode so a fresh checkout cannot enable cleanup accidentally.
+To pause, set `CLEANER_MODE=preview` and deploy. Deployment updates a D1 control gate, which running workflows
+recheck before each move to Trash. Revoking the Google grant also stops access.
 
-Create a Google OAuth client in a personal Google Cloud project and enable Gmail API. Use a Desktop app client.
-Keep the downloaded client JSON under ignored `private/`. Set the consent app to Production; Testing-mode refresh
-tokens for restricted Gmail scopes expire after seven days. A personal app need not be offered to outside users.
-The Google connector's credentials cannot be transferred into this worker; both Gmail accounts require one-time authorization.
+## Free-plan limits
 
-```sh
-npm run auth:gmail -- private/google-client.json arguiot@gmail.com
-npm run auth:gmail -- private/google-client.json arthur@circleback.ai
-```
+Each workflow caps Gmail fetches at 40 to leave room under the Free plan's 50 external-subrequest limit.
+Those limits accumulate across the entire workflow, including sleeps. Three steps per two-minute cycle use at most
+2,160 steps/day, below the documented 3,000/day Free allowance. The hourly watchdog uses approximately 744 Linux
+runner minutes in a 31-day month. Private-repository runner allowances are shared across the GitHub account.
+Quotas or failures can defer cleanup; there is no paid AI fallback. Check current
+[limits](https://developers.cloudflare.com/workflows/reference/limits/) and
+[pricing](https://developers.cloudflare.com/workflows/reference/pricing/) when deploying.
 
-The helper validates OAuth state, uses PKCE, checks account identity, and writes refresh tokens to ignored
-`private/accounts.json` with owner-only permissions. Tokens and mail snapshots never belong in Git or CI artifacts.
-New connections request `gmail.modify` to read mail and move it to Trash. Existing full Gmail grants remain valid; switching behavior does not require another sign-in.
+## Privacy
 
-## Personal Cloudflare deployment
+The classifier sends sender, recipient, subject, snippet, and up to 3,000 characters of body to Cloudflare AI.
+Mail may contain personal or confidential information. Cloudflare secrets hold OAuth credentials; D1 stores message IDs,
+categories, and status rather than bodies or subjects. Logs contain aggregate counts and fixed error messages.
+Local previews contain mail text and stay outside the repository. Cloudflare data and encrypted deployment secrets do not
+become public when the source repository is public.
 
-Create a D1 database named `inbox-cleaner-state` in the personal account. The deployment token needs personal-account
-Workers Scripts Edit, D1 Edit, Workers AI access, account subscriptions read, and User Details Read for identity verification.
-Pin `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_D1_DATABASE_ID` as repository variables. Set `CLOUDFLARE_API_TOKEN` as a
-secret in the `personal-cloudflare` GitHub environment. Do not use Circleback credentials or accounts.
-The deploy helper verifies the token identifies `arguiot@gmail.com` before any Cloudflare mutation.
-First pin the verified personal account ID and Free-plan status in `cloudflare-target.json`. An unverified target refuses deployment.
-
-Set Worker secrets using Wrangler: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GMAIL_ACCOUNTS_JSON`.
-`ADMIN_TOKEN` is optional and is not installed; the public run endpoint is therefore inaccessible.
-Secrets are installed directly into Cloudflare; Gmail tokens are not passed through GitHub CI.
-
-Enable the repository variable `CLOUDFLARE_DEPLOY_ENABLED=true` after personal account verification.
-Pushes to `main` then run checks/tests, apply D1 migrations, and deploy. Pull requests run CI without deployment secrets.
-The CI/CD token cannot silently select an account from the machine's global Wrangler session.
-
-`GET /health` exposes only mode/readiness. `POST /run` requires `Authorization: Bearer <ADMIN_TOKEN>` and always previews.
-Execution logs contain counts, fixed provider status messages, and source locations; no email bodies or subjects are logged.
-To disable scheduled cleanup, change `MODE` to `preview` in `wrangler.jsonc`. Deployments update a D1
-control gate before publishing; every move to Trash rechecks it, including running timer instances. To enable it, use `trash`
-after the actual classifier preview is reviewed and validation is complete. Each deploy retains the checked-in mode.
-
-## Status
-
-Do not confuse a passing unit test/build with a connected live deployment. Cloudflare AI preview, Gmail offline authorization,
-the personal-account deployment, and GitHub deployment secrets must all be verified separately.
+The Worker serves app identity and privacy disclosures at `/` and `/privacy` for Google authorization.
+Self-hosted operators should review those disclosures for their own deployment. This is not a hosted public email service.
+See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.

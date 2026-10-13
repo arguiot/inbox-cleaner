@@ -25,7 +25,7 @@ test('scheduled cleanup moves only revalidated mail to Trash and leaves restored
   const mail={id:'a',threadId:'t',labelIds:['INBOX'],payload:{headers:[]},snippet:'Sale'};
   const fetcher=async(url,options={})=>{
     if(url.endsWith('/token'))return Response.json({access_token:'token'});
-    if(url.endsWith('/profile'))return Response.json({emailAddress:'arguiot@gmail.com'});
+    if(url.endsWith('/profile'))return Response.json({emailAddress:'owner@example.test'});
     if(url.includes('/messages?'))return Response.json({messages:[{id:'a'}]});
     if(url.includes('/messages/a?'))return Response.json(mail);
     if(url.includes('/threads/t?'))return Response.json({messages:[]});
@@ -33,7 +33,7 @@ test('scheduled cleanup moves only revalidated mail to Trash and leaves restored
     assert.equal(options.method,'POST');assert.ok(url.endsWith('/messages/a/trash'));
     return Response.json({...mail,labelIds:['TRASH']});
   };
-  const env={DB:db,GMAIL_ACCOUNTS_JSON:JSON.stringify([{email:'arguiot@gmail.com',refreshToken:'refresh'}]),
+  const env={DB:db,GMAIL_ACCOUNTS_JSON:JSON.stringify([{email:'owner@example.test',refreshToken:'refresh'}]),
     GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret',MODE:'trash',AI_MODEL:CLEF_MODEL,
     AI:{run:async()=>({answers:{relevance:{type:'choice',choice:'unwanted',probabilities:{unwanted:0.95,wanted:0.05}}}})}};
   const report=await run(env,{execute:true,fetcher});
@@ -83,12 +83,12 @@ test('entire scheduled preview runs through OAuth, account verification, Gmail r
   let inferenceCalls=0;
   const fetcher=async(url,options={})=>{
     if (url.endsWith('/token')) return Response.json({access_token:'token'});
-    if (url.endsWith('/profile')) return Response.json({emailAddress:'arguiot@gmail.com'});
+    if (url.endsWith('/profile')) return Response.json({emailAddress:'owner@example.test'});
     if (url.includes('/messages?')) return Response.json({messages:[{id:'a'}]});
     if (url.includes('/messages/a?')) return Response.json(mail);
     writes.push({url,options});throw new Error('Unexpected Gmail write');
   };
-  const env={DB:db,GMAIL_ACCOUNTS_JSON:JSON.stringify([{email:'arguiot@gmail.com',refreshToken:'refresh'}]),
+  const env={DB:db,GMAIL_ACCOUNTS_JSON:JSON.stringify([{email:'owner@example.test',refreshToken:'refresh'}]),
     GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret',MODE:'preview',AI_MODEL:CLEF_MODEL,
     AI:{run:async(model,input)=>{inferenceCalls++;assert.equal(model,CLEF_MODEL);assert.equal(input.model,'clef-flash');
       return {answers:{relevance:{type:'choice',choice:'unwanted',probabilities:{unwanted:0.95,wanted:0.05}}}};}}};
@@ -105,7 +105,7 @@ test('scheduled run rejects a token for the wrong Gmail account before reading m
     if (url.endsWith('/profile')) return Response.json({emailAddress:'wrong@example.test'});
     reads++;throw new Error('must not read');
   };
-  const env={DB:db,GMAIL_ACCOUNTS_JSON:JSON.stringify([{email:'arguiot@gmail.com',refreshToken:'refresh'}]),GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret'};
+  const env={DB:db,GMAIL_ACCOUNTS_JSON:JSON.stringify([{email:'owner@example.test',refreshToken:'refresh'}]),GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret'};
   await assert.rejects(run(env,{fetcher}),/identity mismatch/);assert.equal(reads,0);
 });
 
@@ -113,7 +113,7 @@ test('older unread mail is processed before newer read mail, then recent mail re
   const db=database(),reads=[];
   const fetcher=async url=>{
     if(url.endsWith('/token'))return Response.json({access_token:'token'});
-    if(url.endsWith('/profile'))return Response.json({emailAddress:'arguiot@gmail.com'});
+    if(url.endsWith('/profile'))return Response.json({emailAddress:'owner@example.test'});
     if(url.includes('/messages?')){
       const unread=new URL(url).searchParams.get('q')==='in:inbox is:unread';
       return Response.json({messages:[{id:unread?'older-unread':'newer-read'}]});
@@ -121,7 +121,7 @@ test('older unread mail is processed before newer read mail, then recent mail re
     const id=url.includes('older-unread')?'older-unread':'newer-read';reads.push(id);
     return Response.json({id,threadId:'t',labelIds:['INBOX'],payload:{headers:[]},snippet:'Keep'});
   };
-  const env={DB:db,GMAIL_ACCOUNTS_JSON:JSON.stringify([{email:'arguiot@gmail.com',refreshToken:'refresh'}]),
+  const env={DB:db,GMAIL_ACCOUNTS_JSON:JSON.stringify([{email:'owner@example.test',refreshToken:'refresh'}]),
     GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret',MODE:'preview',AI_MODEL:CLEF_MODEL,
     AI:{run:async()=>({answers:{relevance:{type:'choice',choice:'wanted',probabilities:{wanted:0.95,unwanted:0.05}}}})}};
   await run(env,{fetcher});assert.deepEqual(reads,['older-unread']);
